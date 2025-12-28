@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETH 官方精確抽獎系統</title>
+    <style>
+        /* 樣式保持不變，節省篇幅 */
+        body { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0d1117; font-family: 'Segoe UI', Roboto, sans-serif; color: white; overflow: hidden; position: relative; }
+        #result-text { margin-bottom: 20px; font-size: 1.8rem; font-weight: bold; color: #627eea; text-shadow: 0 0 10px rgba(98, 126, 234, 0.5); min-height: 1.2em; }
+        .container { position: relative; width: 380px; height: 380px; padding: 10px; background: #161b22; border-radius: 50%; box-shadow: 0 0 30px rgba(98, 126, 234, 0.3); }
+        .center-logo { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 60px; height: 60px; background: #0d1117; border-radius: 50%; z-index: 5; display: flex; align-items: center; justify-content: center; border: 2px solid #627eea; box-shadow: 0 0 15px #627eea; }
+        .pointer { position: absolute; top: -20px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-top: 35px solid #ffffff; z-index: 10; filter: drop-shadow(0 0 5px #627eea); }
+        #canvas { width: 100%; height: 100%; border-radius: 50%; transition: transform 6s cubic-bezier(0.15, 0, 0.1, 1); }
+        .controls { margin-top: 40px; display: flex; flex-direction: column; align-items: center; gap: 20px; }
+        button { padding: 15px 50px; font-size: 1.2rem; font-weight: bold; cursor: pointer; background: linear-gradient(45deg, #627eea, #3498db); color: white; border: none; border-radius: 50px; box-shadow: 0 5px 15px rgba(98, 126, 234, 0.4); transition: 0.3s; }
+        button:hover:not(:disabled) { transform: scale(1.05); }
+        button:disabled { background: #30363d; cursor: not-allowed; box-shadow: none; opacity: 0.6; }
+        .admin-box { display: flex; gap: 10px; }
+        #reset-input { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 8px 12px; color: #627eea; font-size: 14px; outline: none; width: 120px; text-align: center; }
+        .footer-text { position: absolute; bottom: 20px; font-size: 12px; color: #8b949e; max-width: 45%; line-height: 1.5; z-index: 100;}
+        .left-corner { left: 20px; text-align: center; display: flex; flex-direction: column; align-items: center; text-decoration: none; }
+        .customer-icon { width: 40px; height: 40px; background-color: #06C755; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 5px; box-shadow: 0 0 10px rgba(6, 199, 85, 0.5); }
+        .left-text { color: #627eea; font-weight: bold; }
+        .right-corner { right: 20px; text-align: right; }
+    </style>
+</head>
+<body>
+
+    <div id="result-text">ETH 幸運大轉盤</div>
+
+    <div class="container">
+        <div class="pointer"></div>
+        <div class="center-logo">
+            <svg width="30" height="50" viewBox="0 0 256 417"><path fill="#627eea" d="M127.96 0L0 210.65l127.96 69.37L256 210.65z"/><path fill="#627eea" d="M127.96 0L0 187.31l127.96 69.63l127.96-69.63z"/><path fill="#627eea" d="M127.96 367.14L0 225.56l127.96 191.32l127.96-191.32z"/><path fill="#627eea" d="M127.96 256.94l-127.96-69.63l127.96 180.32z"/><path fill="#627eea" d="M127.96 256.94l127.96-69.63l-127.96 180.32z"/></svg>
+        </div>
+        <canvas id="canvas" width="500" height="500"></canvas>
+    </div>
+
+    <div class="controls">
+        <button id="spin-btn">立即開始</button>
+        <div class="admin-box">
+            <input type="text" id="reset-input" placeholder="管理代碼">
+        </div>
+    </div>
+
+    <a href="https://line.me/ti/p/ejyqqzecBZ" target="_blank" class="footer-text left-corner">
+        <div class="customer-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M20,2H4C2.9,2,2,2.9,2,4v18l4-4h14c1.1,0,2-0.9,2-2V4C22,2.9,21.1,2,20,2z M17,11h-4v4h-2v-4H7V9h4V5h2v4h4V11z"/></svg>
+        </div>
+        <div class="left-text">聯繫客服獲取抽檢次數</div>
+    </a>
+
+    <div class="footer-text right-corner">僅用於抽獎，獎勵和規則詳情請諮詢客服</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const btn = document.getElementById('spin-btn');
+        const resText = document.getElementById('result-text');
+        const resetInput = document.getElementById('reset-input');
+
+        const prizes = [
+            { name: "5% 存幣返現", range: [0, 999], color: "#1c2128" },
+            { name: "0.5 枚 ETH", range: [1000, 1099], color: "#627eea" },
+            { name: "5-10 USDC", range: [1100, 3099], color: "#1c2128" },
+            { name: "再來一次", range: [3100, 6599], color: "#2d333b" }, // Index: 3
+            { name: "隨機金額代幣", range: [6600, 7099], color: "#1c2128" },
+            { name: "無獎勵", range: [7100, 9999], color: "#2d333b" }
+        ];
+
+        const numPrizes = prizes.length;
+        const arc = (Math.PI * 2) / numPrizes;
+        let currentRotation = 0;
+
+        window.onload = () => {
+            checkStatus();
+            drawWheel();
+        };
+
+        function checkStatus() {
+            const hasSpun = localStorage.getItem('hasSpun');
+            if (hasSpun === 'true') {
+                btn.disabled = true;
+                btn.innerText = "抽獎次數已用完";
+                resText.innerText = "您已參與過活動";
+            } else {
+                btn.disabled = false;
+                btn.innerText = "立即開始";
+                resText.innerText = "ETH 幸運大轉盤";
+            }
+        }
+
+        function drawWheel() {
+            ctx.clearRect(0, 0, 500, 500);
+            const startOffset = -Math.PI / 2;
+            prizes.forEach((p, i) => {
+                const angle = i * arc + startOffset;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.moveTo(250, 250);
+                ctx.arc(250, 250, 250, angle, angle + arc);
+                ctx.fill();
+                ctx.strokeStyle = "#30363d";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.save();
+                ctx.translate(250, 250);
+                ctx.rotate(angle + arc / 2);
+                ctx.textAlign = "right";
+                ctx.fillStyle = "white";
+                ctx.font = "bold 20px Arial";
+                ctx.fillText(p.name, 230, 10);
+                ctx.restore();
+            });
+        }
+
+        resetInput.addEventListener('input', (e) => {
+            if (e.target.value === 'ETH0977') {
+                localStorage.removeItem('hasSpun');
+                e.target.value = '';
+                checkStatus();
+                alert('管理員：抽獎次數已手動刷新！');
+            }
+        });
+
+        btn.onclick = () => {
+            if (localStorage.getItem('hasSpun') === 'true') return;
+
+            btn.disabled = true;
+            resText.innerText = "ETH 網絡確認中...";
+
+            const seed = Math.floor(Math.random() * 10000);
+            const winIndex = prizes.findIndex(p => seed >= p.range[0] && seed <= p.range[1]);
+            
+            const degPerItem = 360 / numPrizes;
+            const targetCenterDeg = (winIndex * degPerItem) + (degPerItem / 2);
+            
+            const baseRotation = 3600; 
+            const rotationToTarget = (360 - targetCenterDeg);
+            const extraFromCurrent = 360 - (currentRotation % 360);
+            
+            const totalDeg = baseRotation + extraFromCurrent + rotationToTarget;
+            currentRotation += totalDeg;
+
+            canvas.style.transform = `rotate(${currentRotation}deg)`;
+
+            setTimeout(() => {
+                const resultName = prizes[winIndex].name;
+                resText.innerText = "結果：" + resultName;
+
+                // 核心邏輯修改處：
+                if (winIndex === 3) { // 如果是「再來一次」
+                    localStorage.removeItem('hasSpun');
+                    alert("恭喜！獲得一次額外抽獎機會！");
+                    checkStatus(); // 恢復按鈕可點擊狀態
+                } else {
+                    localStorage.setItem('hasSpun', 'true');
+                    if(winIndex === 1) alert("恭喜抽中 0.5 ETH！");
+                }
+            }, 6000);
+        };
+    </script>
+</body>
+</html>
